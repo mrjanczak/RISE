@@ -5,133 +5,41 @@
 # Control by mouse and keyboard
 # (C) Michal Janczak, Poland 2024
 
-# 0. Prepare Raspberry Pi image Raspberry Pi OS with desktop (64-bit)
-# 1. Install buildhat:  sudo apt install python3-build-hat
-# 2. Enable Serial port in Raspberry preferences > configuration
-# 3. In admin/ folder run `git clone https://github.com/mrjanczak/RAISE.git`
-# 4. Run sudo nano /etc/xdg/autostart/display.desktop and paste:
-#    Desktop Entry]
-#    Name=RisePanel
-#    Exec=/usr/bin/python3 /home/admin/RAISE/panel.py
-# 5. Reboot
-
 from time import sleep
 print('RISE control panel initiation...')
 sleep(1)
 
 import math
 import numpy as np
-import os
 import pygame
 import pygame.gfxdraw
 from datetime import datetime
 
+import threading
+import RPi.GPIO as GPIO
+import time
+from hr8825 import HR8825 as H
+
+SPEED_MULT = 1
 verbose = False
 
+locked = True
+pin = '7473'
+
+class Motor():
+    def __init__(self, port):
+        pass
+    def start(self, speed):
+        pass
+    def stop(self):
+        pass  
+    def run_for_degrees(self, degrees):
+        pass
+
 # Initiate servos
-try:
-    from buildhat import Motor
-    motors = [Motor('A') , Motor('B'),  Motor('C'), Motor('D')]
+# from buildhat import Motor
+motors = [Motor('A') , Motor('B'), Motor('C'), Motor('D')]
 
-    import smbus2
-    class PCA9685:
-
-        # Registers/etc.
-        __SUBADR1            = 0x02
-        __SUBADR2            = 0x03
-        __SUBADR3            = 0x04
-        __MODE1              = 0x00
-        __PRESCALE           = 0xFE
-        __LED0_ON_L          = 0x06
-        __LED0_ON_H          = 0x07
-        __LED0_OFF_L         = 0x08
-        __LED0_OFF_H         = 0x09
-        __ALLLED_ON_L        = 0xFA
-        __ALLLED_ON_H        = 0xFB
-        __ALLLED_OFF_L       = 0xFC
-        __ALLLED_OFF_H       = 0xFD
-
-        def __init__(self, address=0x40, debug=False):
-            self.bus = smbus2.SMBus(1)
-            self.address = address
-            self.debug = debug
-            if (self.debug):
-                print("Reseting PCA9685")
-                self.write(self.__MODE1, 0x00)
-            
-        def write(self, reg, value):
-            "Writes an 8-bit value to the specified register/address"
-            self.bus.write_byte_data(self.address, reg, value)
-            if (self.debug):
-                print("I2C: Write 0x%02X to register 0x%02X" % (value, reg))
-            
-        def read(self, reg):
-            "Read an unsigned byte from the I2C device"
-            result = self.bus.read_byte_data(self.address, reg)
-            if (self.debug):
-                print("I2C: Device 0x%02X returned 0x%02X from reg 0x%02X" % (self.address, result & 0xFF, reg))
-            return result
-            
-        def setPWMFreq(self, freq):
-            "Sets the PWM frequency"
-            prescaleval = 25000000.0    # 25MHz
-            prescaleval /= 4096.0       # 12-bit
-            prescaleval /= float(freq)
-            prescaleval -= 1.0
-            if (self.debug):
-                print("Setting PWM frequency to %d Hz" % freq)
-            print("Estimated pre-scale: %d" % prescaleval)
-            prescale = math.floor(prescaleval + 0.5)
-            if (self.debug):
-                print("Final pre-scale: %d" % prescale)
-
-            oldmode = self.read(self.__MODE1)
-            newmode = (oldmode & 0x7F) | 0x10        # sleep
-            self.write(self.__MODE1, newmode)        # go to sleep
-            self.write(self.__PRESCALE, int(math.floor(prescale)))
-            self.write(self.__MODE1, oldmode)
-            time.sleep(0.005)
-            self.write(self.__MODE1, oldmode | 0x80)
-
-        def setPWM(self, channel, on, off):
-            "Sets a single PWM channel"
-            self.write(self.__LED0_ON_L+4*channel, on & 0xFF)
-            self.write(self.__LED0_ON_H+4*channel, on >> 8)
-            self.write(self.__LED0_OFF_L+4*channel, off & 0xFF)
-            self.write(self.__LED0_OFF_H+4*channel, off >> 8)
-            if (self.debug):
-                print("channel: %d  LED_ON: %d LED_OFF: %d" % (channel,on,off))
-            
-        def setServoPulse(self, channel, pulse):
-            "Sets the Servo Pulse,The PWM frequency must be 50HZ"
-            pulse = pulse*4096/20000        #PWM frequency is 50HZ,the period is 20000us
-            self.setPWM(channel, 0, int(pulse))
-
-    pwm = PCA9685(0x40, debug=False)
-    pwm.setPWMFreq(50)
-
-except:    
-    class Motor():
-        def __init__(self, port):
-            pass
-        def start(self, speed):
-            pass
-        def stop(self):
-            pass  
-        def  run_for_degrees(self, degrees):
-            pass
-    motors = [Motor('A') , Motor('B'),  Motor('C'), Motor('D')]
-    print('LEGO Servos HAT not found!')
-
-    class PCA9685:
-        def __init__(self, address=0x40, debug=False):
-            pass
-        def setPWMFreq(self, freq):
-            pass
-        def setServoPulse(self, channel, pulse):
-            pass
-    pwm = PCA9685(0x40, debug=False)
-    print('PCA9685 Servo Driver HAT not found!')
 
 # Motors
 PUMP_MOTOR = 0
@@ -139,12 +47,52 @@ OGV_MOTOR = 1
 N1_MOTOR = 2
 N2_MOTOR = 3
 
-# motors = [Motor('A') , Motor('B'),  Motor('C'), Motor('D')]
+# Default detent values
+N1, GI_N1, REV_N1, CRZ_N1, CL_N1, TOGA_N1, N1_MAX, N1_STEP = 0.0, 20.0, 60.0, 90.0, 95.0, 100., 100., 10
+EGT = 0.0
+N2, N2_MAX, N2_STEP = 0.0, 100., 10.
+FF, FF_MAX, FF_STEP = 0.0, 100., 10.  # fuel flow    []
+OP = 60 # oil pressure []
+OT = 70 # oil temp     []
+OQ = 90 # oil quantity []
+VIB = 0.0 # vibrations [CU]
+
+PCM, PCM_MAX, PCM_STEP = 30., 30., 10.
+OGV, OGV_MAX, OGV_STEP = 30., 30., 10.
+VBV, VBV_MAX, VBV_STEP = 0.0, 30., 10.
+VSV, VSV_MAX, VSV_STEP = 0.0, 30., 10.
+ACC, ACC_MAX, ACC_STEP = 0.0, 30., 10.
+TAT = 20
+
+# Init stepper motors
+def control_stepper(id, speed):
+    name = threading.current_thread().name
+    print(f'Init {name}')
+    if name == 'Motor1':
+        Motor = H(dir_pin=13, step_pin=19, enable_pin=12, mode_pins=(16, 17, 20))
+        
+    while True:
+        speed_ = int(speed())
+        if speed_ > 0:
+            stepdelay = 1/(speed_*SPEED_MULT)
+            Motor.TurnStep(Dir='forward', steps=speed_, stepdelay = stepdelay)
+        elif speed() < 0:
+            stepdelay = abs(1/(speed()*SPEED_MULT))
+            Motor.TurnStep(Dir='backward', steps=speed_, stepdelay = stepdelay)            
+        else:
+            Motor.Stop()
+            time.sleep(.1)
+
+Motor1 = threading.Thread(target = control_stepper, name = 'Motor1', args = (id, lambda: N1 ))
+Motor1.start()
+
+# Init LEGO servos
+motors = [Motor('A') , Motor('B'),  Motor('C'), Motor('D')]
 ratios = [1, 24*20/12, 1, 1]
 direction = [1,1,-1,1]
 step = [0,360*2,0,0]
 
-speed_max = [100,50,30,50]
+speed_max = [100,50,50,50]
 speed_min = [20,20,20,20]
 time_sec = 60
 deg = 360*20
@@ -196,38 +144,11 @@ yellow = (247,173,1)
 blue = (0,255,255)
 green = (0,255,0)
 rad = math.pi/180
+font1 = 'PibotoCondensed' # RasPi
+# font1 = 'RobotoCondensed' # Windows
 
-# Default detent values
-N1, GI_N1, REV_N1, CRZ_N1, CL_N1, TOGA_N1, N1_MAX, N1_STEP = 0.0, 20.0, 60.0, 90.0, 95.0, 100., 100., 10
-EGT = 0.0
-N2, N2_MAX, N2_STEP = 0.0, 100., 10.
-FF, FF_MAX, FF_STEP = 0.0, 100., 10.  # fuel flow    []
-OP = 60 # oil pressure []
-OT = 70 # oil temp     []
-OQ = 90 # oil quantity []
-VIB = 0.0 # vibrations [CU]
-
-PCM, PCM_MAX, PCM_STEP = 30., 30., 10.
-OGV, OGV_MAX, OGV_STEP = 30., 30., 10.
-VBV, VBV_MAX, VBV_STEP = 0.0, 30., 10.
-VSV, VSV_MAX, VSV_STEP = 0.0, 30., 10.
-ACC, ACC_MAX, ACC_STEP = 0.0, 30., 10.
-TAT = 20
-
-if os.name == 'nt':
-    font1 = 'RobotoCondensed' # Windows
-    locked = False
-else:
-    font1 = 'PibotoCondensed' # RasPi
-    locked = True
-
-if locked:
-    header_msg = 'Panel locked'
-else:
-    header_msg = ''
-
-pin = '0610'
 pin_ = ''
+header_msg = 'Panel locked'
 click_rects = {}
 timer = datetime.now()
 det_lab, det_N1 = '', ''
@@ -697,6 +618,7 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+            
         if event.type in [pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN]:
             control(event)
 
@@ -708,6 +630,6 @@ while running:
     draw()
 
     dt = clock.tick(60) / 1000
-    #pygame.time.wait(100)
 
+Motor1.join()
 pygame.quit()
