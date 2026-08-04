@@ -5,6 +5,16 @@
 # Control by mouse and keyboard
 # (C) Michal Janczak, Poland 2024
 
+# 0. Prepare Raspberry Pi image Raspberry Pi OS with desktop (64-bit)
+# 1. Install buildhat:  sudo apt install python3-build-hat
+# 2. Enable Serial port in Raspberry preferences > configuration
+# 3. In admin/ folder run `git clone https://github.com/mrjanczak/RAISE.git`
+# 4. Run sudo nano /etc/xdg/autostart/display.desktop and paste:
+#    Desktop Entry]
+#    Name=RisePanel
+#    Exec=/usr/bin/python3 /home/admin/RAISE/panel.py
+# 5. Reboot
+
 from time import sleep
 print('RISE control panel initiation...')
 sleep(1)
