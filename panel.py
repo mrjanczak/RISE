@@ -7,10 +7,17 @@
 
 # 0. Prepare Raspberry Pi image Raspberry Pi OS with desktop (64-bit)
 # 1. Install buildhat:  sudo apt install python3-build-hat
-# 2. Enable Serial port in Raspberry preferences > configuration
+# 2. Enable Serial port in Raspberry:
+
+    # Open your terminal on the Pi or via SSH and type: sudo raspi-config
+    # Navigate to Interface Options (or Interfacing Options) and select Serial Port.
+    # Answer No to the prompt: "Would you like a login shell to be accessible over serial?"
+    # Answer Yes to the prompt: "Would you like the serial port hardware to be enabled?"
+    # Select Finish and choose Yes to reboot your Raspberry Pi
+
 # 3. In admin/ folder run `git clone https://github.com/mrjanczak/RAISE.git`
 # 4. Run sudo nano /etc/xdg/autostart/display.desktop and paste:
-#    Desktop Entry]
+#    [Desktop Entry]
 #    Name=RisePanel
 #    Exec=/usr/bin/python3 /home/admin/RAISE/panel.py
 # 5. Reboot
