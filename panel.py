@@ -6,7 +6,9 @@
 # (C) Michal Janczak, Poland 2024
 
 # 0. Prepare Raspberry Pi image Raspberry Pi OS with desktop (64-bit)
-# 1. Install buildhat:  sudo apt install python3-build-hat
+# 1. Install:
+#      sudo apt install python3-build-hat
+#      sudo apt install python3-rpi.gpio -y
 # 2. Enable Serial port in Raspberry:
 
     # Open your terminal on the Pi or via SSH and type: sudo raspi-config
