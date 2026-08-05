@@ -21,7 +21,7 @@
 # 4. Run sudo nano /etc/xdg/autostart/display.desktop and paste:
 #    [Desktop Entry]
 #    Name=RisePanel
-#    Exec=/usr/bin/python3 /home/admin/RAISE/panel.py
+#    Exec=/usr/bin/python3 /home/rise/RISE/panel.py
 # 5. Reboot
 
 from time import sleep
